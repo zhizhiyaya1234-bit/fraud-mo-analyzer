@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import joblib
 import os
-import plotly.express as px  # 🌟 新增：用于绘制精美的交互式矩阵热力图
+import plotly.express as px
 
 # ================= 1. 页面全局配置 =================
 st.set_page_config(page_title="诈骗行为链路自动化研判系统", layout="wide", page_icon="🛡️")
@@ -25,15 +25,11 @@ st.divider()
 @st.cache_data
 def load_data():
     try:
-        # 加载命名好的档案表
         df_profiles = pd.read_excel("cluster_profiles_named.xlsx")
         
-        # 🌟 新增：加载全量底层数据（用于做心理学交叉分析）
         try:
-            df_full = pd.read_excel("clustered_full_data.xlsx")
-            # 剔除噪音，只保留聚类成功的有效样本
+            df_full = pd.read_excel("clustered_scam_only.xlsx")
             df_clean = df_full[df_full['cluster'] >= 0].copy()
-            # 映射中文名字
             name_map = dict(zip(df_profiles['cluster_id'], df_profiles['cluster_name']))
             df_clean['cluster_name'] = df_clean['cluster'].map(name_map)
         except Exception as e:
@@ -65,10 +61,9 @@ col4.metric(label="🚀 随机森林泛化性能", value="94.0%", delta="5-Fold 
 st.write("") # 留白
 
 # ================= 4. 构建四大核心功能模块 =================
-# 🌟 新增了一个 Tab 用于专门展示心理画像
 tab1, tab2, tab3, tab4 = st.tabs(["📊 宏观态势地图", "🔍 诈骗模式图谱", "🧠 犯罪心理交叉透视", "🚨 智能预警沙盒 (实战)"])
 
-# ----------------- Tab 1: 宏观态势地图 -----------------
+# ----------------- Tab 1: 宏观态势地图 (重新排版升级版) -----------------
 with tab1:
     st.markdown("### 🗺️ 诈骗宇宙空间分布拓扑图")
     st.info("💡 算法通过计算不同案件在【准备-接触-信任-操纵-榨取】全链路的相似度，自动将手法一致的案件聚集在相邻的拓扑空间中。")
@@ -76,22 +71,74 @@ with tab1:
     try:
         st.image("01_Named_UMAP_Scatter.png", use_container_width=True)
     except:
-        st.warning("未检测到 01_Named_UMAP_Scatter.png 图片。")
+        st.caption("暂无 UMAP 图片展示")
+        
+    st.markdown("#### 🌊 犯罪行为全链路流转图 (MO Flow)")
+    if not df_clean.empty:
+        # 选择核心的4个阶段画流转图
+        flow_cols = ['contact_primary', 'trust_primary', 'manipulation_primary', 'extraction_primary']
+        df_flow = df_clean[flow_cols].copy()
+        # 清洗前缀，让桑基图更清爽
+        for col in flow_cols:
+            df_flow[col] = df_flow[col].apply(lambda x: str(x).split('_')[-1] if '_' in str(x) else str(x))
+            
+        fig_flow = px.parallel_categories(
+            df_flow, 
+            dimensions=flow_cols,
+            labels={'contact_primary': '接触', 'trust_primary': '信任', 'manipulation_primary': '操纵', 'extraction_primary': '榨取'},
+            color_continuous_scale=px.colors.sequential.Agsunset
+        )
+        fig_flow.update_layout(height=450, margin=dict(l=20, r=20, t=30, b=20))
+        st.plotly_chart(fig_flow, use_container_width=True)
         
     st.divider()
-    col_img1, col_img2 = st.columns(2)
-    with col_img1:
-        st.markdown("#### 🎯 智能化诈骗类型判别路径")
-        try:
-            st.image("06_Named_Decision_Tree_Clean.png", use_container_width=True)
-        except:
-            st.caption("暂无决策树图片展示")
-    with col_img2:
+    
+    # --- 第二排：占比 vs 特征重要性 ---
+    row2_col1, row2_col2 = st.columns(2)
+    with row2_col1:
+        st.markdown("#### 🍩 诈骗大类规模占比基线")
+        if not df_clean.empty:
+            type_counts = df_clean['cluster_name'].value_counts().reset_index()
+            type_counts.columns = ['诈骗类型', '案件宗数']
+            type_counts['简称'] = type_counts['诈骗类型'].apply(lambda x: str(x)[:12] + '...' if len(str(x))>12 else str(x))
+            
+            fig_pie = px.pie(
+                type_counts, values='案件宗数', names='简称', hole=0.4,
+                hover_data=['诈骗类型'], color_discrete_sequence=px.colors.qualitative.Prism
+            )
+            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+            fig_pie.update_layout(height=450, margin=dict(t=10, b=10, l=10, r=10), showlegend=False)
+            st.plotly_chart(fig_pie, use_container_width=True)
+            
+    with row2_col2:
         st.markdown("#### ⚡ 判定诈骗类型的核心关键动作")
         try:
             st.image("07_Named_Feature_Importance.png", use_container_width=True)
         except:
             st.caption("暂无特征重要性图片展示")
+            
+    st.divider()
+    
+    # --- 第三排：决策树 vs 标签热力矩阵 ---
+    row3_col1, row3_col2 = st.columns(2)
+    with row3_col1:
+        st.markdown("#### 🎯 智能化诈骗类型判别路径")
+        try:
+            st.image("06_Named_Decision_Tree_Clean.png", use_container_width=True)
+        except:
+            st.caption("暂无决策树图片展示")
+            
+    with row3_col2:
+        st.markdown("#### 🧮 犯罪团伙作案标签热力矩阵")
+        st.info("颜色越深，代表该类别犯罪团伙在行骗过程中触发对应标签动作的频率越高。")
+        try:
+            # 兼容 jpg 格式
+            if os.path.exists("02_Named_Feature_Heatmap.jpg"):
+                st.image("02_Named_Feature_Heatmap.jpg", use_container_width=True)
+            else:
+                st.image("02_Named_Feature_Heatmap.png", use_container_width=True)
+        except:
+            st.caption("暂无热力矩阵图片展示")
 
 # ----------------- Tab 2: 诈骗模式图谱 (单类下钻) -----------------
 with tab2:
@@ -130,29 +177,25 @@ with tab2:
     else:
         st.error("未能加载 cluster_profiles_named.xlsx 文件，请检查路径。")
 
-# ----------------- Tab 3: 🧠 犯罪心理交叉透视 (全新引入模块) -----------------
+# ----------------- Tab 3: 🧠 犯罪心理交叉透视 -----------------
 with tab3:
     st.markdown("### 🧠 犯罪心理画像：案件类型与受害者心理交叉分析")
-    st.info("💡 洞察解析：通过算法交叉矩阵，揭示不同诈骗套路底层“收割”的是受害者的哪种心理弱点与行为驱动力。")
+    st.info("💡 洞察解析：通过交叉矩阵，揭示不同诈骗套路底层“收割”的是受害者的哪种心理弱点与行为驱动力。")
 
     if not df_clean.empty and 'psychological_vulnerability' in df_clean.columns and 'compliance_driver' in df_clean.columns:
-        
-        # 截断太长的名字，防止热力图 Y 轴标签挤在一起
         df_clean['short_name'] = df_clean['cluster_name'].apply(lambda x: str(x)[:12] + '...' if len(str(x))>12 else str(x))
         
         col_p, col_d = st.columns(2)
         
         with col_p:
             st.markdown("#### 💔 诈骗类型 VS 心理弱点")
-            # 计算交叉频次
             cross_psych = pd.crosstab(df_clean['short_name'], df_clean['psychological_vulnerability'])
-            # 绘制热力图
             fig_psych = px.imshow(
                 cross_psych,
                 labels=dict(x="受害者心理弱点", y="诈骗判定类型", color="案件数量"),
                 x=cross_psych.columns,
                 y=cross_psych.index,
-                color_continuous_scale="Blues", # 蓝色系
+                color_continuous_scale="Blues", 
                 text_auto=True,
                 aspect="auto"
             )
@@ -161,23 +204,21 @@ with tab3:
 
         with col_d:
             st.markdown("#### 🪝 诈骗类型 VS 顺从驱动力")
-            # 计算交叉频次
             cross_driver = pd.crosstab(df_clean['short_name'], df_clean['compliance_driver'])
-            # 绘制热力图
             fig_driver = px.imshow(
                 cross_driver,
                 labels=dict(x="受害者顺从驱动力", y="诈骗判定类型", color="案件数量"),
                 x=cross_driver.columns,
                 y=cross_driver.index,
-                color_continuous_scale="Oranges", # 橙色系
+                color_continuous_scale="Oranges", 
                 text_auto=True,
                 aspect="auto"
             )
             fig_driver.update_layout(xaxis_tickangle=-30, height=600)
             st.plotly_chart(fig_driver, use_container_width=True)
             
-        st.markdown("#### 🕵️ 警务实战建议 (反诈宣传精准宣发)")
-        st.caption("基于上述交叉图谱，公安机关的反诈宣传应从“大水漫灌”转向“精准滴灌”。例如，深色区域显示“情感孤独”类受害者极易落入特定诈骗陷阱，反诈中心应联合社区重点进行针对性的情感疏导宣发；而对于受“避免惩罚（恐吓）”驱动的受害者，宣传核心应放在普及“公检法绝对不会在线办案及要求转账”的硬性常识上。")
+        st.markdown("#### 🕵️ 警务实战建议 (反诈精准宣发)")
+        st.caption("基于上述交叉图谱，公安机关的反诈宣传应转向“精准滴灌”。例如，深色区域显示“情感孤独”类受害者极易落入特定诈骗陷阱，反诈中心应联合社区进行针对性的情感疏导宣发；而对于受“避免惩罚（恐吓）”驱动的受害者，宣传核心应放在普及“公检法绝对不会在线办案”的常识上。")
     else:
         st.warning("⚠️ 缺失全量案卷数据或心理特征列，无法生成交叉分析矩阵。请确保 `clustered_full_data.xlsx` 在同级目录下。")
 
@@ -189,7 +230,6 @@ with tab4:
     if model is None or model_features is None:
         st.error("❌ 未能加载模型文件 (fraud_rf_model.pkl) 或特征文件，无法启用预测沙盒。")
     else:
-        # 国标字典：包含全部可能的特征
         LABEL_DEFS = {
             "prep": ["PREP1_人设身份伪造", "PREP2_平台网站搭建", "PREP3_数据名单获取", "PREP4_无明显前期准备"],
             "contact": ["CON1_盲发广撒触达", "CON2_社交平台搭讪", "CON3_需求场景切入", "CON4_冒名定向联络", "CON5_线下物理接触", "CON6_受害者主动上门"],
