@@ -190,34 +190,43 @@ with tab3:
             submitted = st.form_submit_button("⚡ 执行 AI 智能研判", use_container_width=True)
             
         if submitted:
-            with st.spinner('天网引擎正在检索 128 条判定路径...'):
-                # 1. 初始化模型需要的特征向量 (全 0)
-                input_vector = {feat: 0 for feat in model_features}
+            all_empty = all(val == "[无明显特征]" for val in user_inputs.values())
+            if all_empty:
+                st.warning("⚠️ 警报：案情特征提取过少！请至少录入一个明确的涉案行为特征进行锚定。")
+            else:
+                with st.spinner('天网引擎并发计算中...'):
+                    input_vector = {feat: 0 for feat in model_features}
+                    for stage_key, selected_val in user_inputs.items():
+                        if selected_val != "[无明显特征]":
+                            feature_name = f"{stage_key}_primary_{selected_val}"
+                            if feature_name in input_vector:
+                                input_vector[feature_name] = 1
+                    
+                    input_df = pd.DataFrame([input_vector])[model_features]
+                    prediction = rf_model.predict(input_df)[0]
+                    proba = np.max(rf_model.predict_proba(input_df)) * 100
                 
-                # 2. 匹配特征（容错机制核心）
-                for stage_key, selected_val in user_inputs.items():
-                    if selected_val != "无明显特征":
-                        # 拼接出 One-Hot 列的名字
-                        feature_name = f"{stage_key}_primary_{selected_val}"
-                        # 【容错判定】：只有当这个特征在训练模型中真实存在时，才赋值为 1
-                        # 否则它就像空气一样被忽略掉（即该阶段的所有已知特征依然为 0）
-                        if feature_name in input_vector:
-                            input_vector[feature_name] = 1
+                # ================= 核心修复：还原被截断的全名 =================
+                # 1. 去掉预测结果里烦人的 "..."
+                clean_pred = prediction.replace("...", "") 
                 
-                # 3. 转换为 DataFrame 供模型预测
-                input_df = pd.DataFrame([input_vector])[model_features]
+                # 2. 去原始数据表里寻找以这几个字开头的全名
+                matched_data = df_profiles[df_profiles['cluster_name'].str.startswith(clean_pred, na=False)]
                 
-                prediction = model.predict(input_df)[0]
-                proba = np.max(model.predict_proba(input_df)) * 100
-            
-            st.divider()
-            res_col1, res_col2 = st.columns([1, 2])
-            with res_col1:
-                st.metric("研判置信度", f"{proba:.1f}%")
-            with res_col2:
-                st.subheader(f"🔴 研判结果：{prediction}")
-            
-            matched_data = df_profiles[df_profiles['cluster_name'] == prediction]
-            if not matched_data.empty:
-                st.info(f"**👮 刑侦建议**：{matched_data.iloc[0].get('mechanism_analysis', '请立即止付')}")
-                st.caption(f"**判定规则依据**：{matched_data.iloc[0].get('decision_rule', '')}")
+                # 3. 如果找到了，就用全名；万一没找到，就用原来的
+                full_name = matched_data.iloc[0]['cluster_name'] if not matched_data.empty else prediction
+                # ==============================================================
+                
+                st.divider()
+                r1, r2 = st.columns([1, 3])
+                with r1:
+                    st.metric("研判置信度", f"{proba:.1f}%")
+                with r2:
+                    st.success(f"### 🔴 研判结果：{full_name}")
+                
+                # 现在名字匹配上了，专家的防范建议也能完美弹出来了！
+                if not matched_data.empty:
+                    rule = matched_data.iloc[0].get('decision_rule', '无提取规则')
+                    st.info(f"**📖 机器判别规则依据**：\n{rule}")
+                    analysis = matched_data.iloc[0].get('mechanism_analysis', '立即开展预警止付')
+                    st.error(f"**👮 案件机理与防范建议**：\n{analysis}")
