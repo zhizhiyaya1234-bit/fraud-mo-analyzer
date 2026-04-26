@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import joblib
 import os
+import plotly.express as px  # 🌟 新增：用于绘制精美的交互式矩阵热力图
 
 # ================= 1. 页面全局配置 =================
 st.set_page_config(page_title="诈骗行为链路自动化研判系统", layout="wide", page_icon="🛡️")
@@ -24,10 +25,23 @@ st.divider()
 @st.cache_data
 def load_data():
     try:
+        # 加载命名好的档案表
         df_profiles = pd.read_excel("cluster_profiles_named.xlsx")
-        return df_profiles
+        
+        # 🌟 新增：加载全量底层数据（用于做心理学交叉分析）
+        try:
+            df_full = pd.read_excel("clustered_full_data.xlsx")
+            # 剔除噪音，只保留聚类成功的有效样本
+            df_clean = df_full[df_full['cluster'] >= 0].copy()
+            # 映射中文名字
+            name_map = dict(zip(df_profiles['cluster_id'], df_profiles['cluster_name']))
+            df_clean['cluster_name'] = df_clean['cluster'].map(name_map)
+        except Exception as e:
+            df_clean = pd.DataFrame()
+            
+        return df_profiles, df_clean
     except:
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
 @st.cache_resource
 def load_model():
@@ -38,7 +52,7 @@ def load_model():
     except:
         return None, None
 
-df_profiles = load_data()
+df_profiles, df_clean = load_data()
 model, model_features = load_model()
 
 # ================= 3. 构建顶部核心指标看板 (KPIs) =================
@@ -46,12 +60,13 @@ col1, col2, col3, col4 = st.columns(4)
 col1.metric(label="📥 接入涉案卷宗样本", value="1,069 宗", delta="已清洗清洗噪声")
 col2.metric(label="🧬 提炼标准犯罪链路", value="12 类", delta="无监督自底向上提取")
 col3.metric(label="⚙️ 决策树白盒准确率", value="91.0%", delta="警务规则可解释")
-col4.metric(label="🚀 随机森林极限准确率", value="96.0%", delta="AI预测引擎加持")
+col4.metric(label="🚀 随机森林泛化性能", value="94.0%", delta="5-Fold 交叉验证加持")
 
 st.write("") # 留白
 
-# ================= 4. 构建三大核心功能模块 (多标签页) =================
-tab1, tab2, tab3 = st.tabs(["📊 宏观态势地图", "🔍 诈骗模式图谱", "🚨 智能预警沙盒 (实战)"])
+# ================= 4. 构建四大核心功能模块 =================
+# 🌟 新增了一个 Tab 用于专门展示心理画像
+tab1, tab2, tab3, tab4 = st.tabs(["📊 宏观态势地图", "🔍 诈骗模式图谱", "🧠 犯罪心理交叉透视", "🚨 智能预警沙盒 (实战)"])
 
 # ----------------- Tab 1: 宏观态势地图 -----------------
 with tab1:
@@ -115,15 +130,66 @@ with tab2:
     else:
         st.error("未能加载 cluster_profiles_named.xlsx 文件，请检查路径。")
 
-# ----------------- Tab 3: 智能预警沙盒 (实战互动) -----------------
+# ----------------- Tab 3: 🧠 犯罪心理交叉透视 (全新引入模块) -----------------
 with tab3:
+    st.markdown("### 🧠 犯罪心理画像：案件类型与受害者心理交叉分析")
+    st.info("💡 洞察解析：通过算法交叉矩阵，揭示不同诈骗套路底层“收割”的是受害者的哪种心理弱点与行为驱动力。")
+
+    if not df_clean.empty and 'psychological_vulnerability' in df_clean.columns and 'compliance_driver' in df_clean.columns:
+        
+        # 截断太长的名字，防止热力图 Y 轴标签挤在一起
+        df_clean['short_name'] = df_clean['cluster_name'].apply(lambda x: str(x)[:12] + '...' if len(str(x))>12 else str(x))
+        
+        col_p, col_d = st.columns(2)
+        
+        with col_p:
+            st.markdown("#### 💔 诈骗类型 VS 心理弱点")
+            # 计算交叉频次
+            cross_psych = pd.crosstab(df_clean['short_name'], df_clean['psychological_vulnerability'])
+            # 绘制热力图
+            fig_psych = px.imshow(
+                cross_psych,
+                labels=dict(x="受害者心理弱点", y="诈骗判定类型", color="案件数量"),
+                x=cross_psych.columns,
+                y=cross_psych.index,
+                color_continuous_scale="Blues", # 蓝色系
+                text_auto=True,
+                aspect="auto"
+            )
+            fig_psych.update_layout(xaxis_tickangle=-30, height=600)
+            st.plotly_chart(fig_psych, use_container_width=True)
+
+        with col_d:
+            st.markdown("#### 🪝 诈骗类型 VS 顺从驱动力")
+            # 计算交叉频次
+            cross_driver = pd.crosstab(df_clean['short_name'], df_clean['compliance_driver'])
+            # 绘制热力图
+            fig_driver = px.imshow(
+                cross_driver,
+                labels=dict(x="受害者顺从驱动力", y="诈骗判定类型", color="案件数量"),
+                x=cross_driver.columns,
+                y=cross_driver.index,
+                color_continuous_scale="Oranges", # 橙色系
+                text_auto=True,
+                aspect="auto"
+            )
+            fig_driver.update_layout(xaxis_tickangle=-30, height=600)
+            st.plotly_chart(fig_driver, use_container_width=True)
+            
+        st.markdown("#### 🕵️ 警务实战建议 (反诈宣传精准宣发)")
+        st.caption("基于上述交叉图谱，公安机关的反诈宣传应从“大水漫灌”转向“精准滴灌”。例如，深色区域显示“情感孤独”类受害者极易落入特定诈骗陷阱，反诈中心应联合社区重点进行针对性的情感疏导宣发；而对于受“避免惩罚（恐吓）”驱动的受害者，宣传核心应放在普及“公检法绝对不会在线办案及要求转账”的硬性常识上。")
+    else:
+        st.warning("⚠️ 缺失全量案卷数据或心理特征列，无法生成交叉分析矩阵。请确保 `clustered_full_data.xlsx` 在同级目录下。")
+
+# ----------------- Tab 4: 智能预警沙盒 (实战互动) -----------------
+with tab4:
     st.markdown("### 🚨 警务实战研判沙盒：全链路智能定性")
     st.write("请根据案情描述，录入该案件在关键阶段的行为特征。天网引擎将通过底层决策林瞬间给出案件定性。")
     
     if model is None or model_features is None:
         st.error("❌ 未能加载模型文件 (fraud_rf_model.pkl) 或特征文件，无法启用预测沙盒。")
     else:
-        # 国标字典：包含全部可能的特征，增强系统的实战鲁棒性
+        # 国标字典：包含全部可能的特征
         LABEL_DEFS = {
             "prep": ["PREP1_人设身份伪造", "PREP2_平台网站搭建", "PREP3_数据名单获取", "PREP4_无明显前期准备"],
             "contact": ["CON1_盲发广撒触达", "CON2_社交平台搭讪", "CON3_需求场景切入", "CON4_冒名定向联络", "CON5_线下物理接触", "CON6_受害者主动上门"],
@@ -153,13 +219,11 @@ with tab3:
             submitted = st.form_submit_button("⚡ 立即启动 AI 智能研判引擎", use_container_width=True)
             
         if submitted:
-            # 防呆机制：如果全空则拦截
             all_empty = all(val == "[无明显特征]" for val in user_inputs.values())
             if all_empty:
                 st.warning("⚠️ 警报：案情特征提取过少！请至少录入一个明确的涉案行为特征进行锚定。")
             else:
                 with st.spinner('天网引擎并发计算中...'):
-                    # 1. 构造模型特征向量
                     input_vector = {feat: 0 for feat in model_features}
                     for stage_key, selected_val in user_inputs.items():
                         if selected_val != "[无明显特征]":
@@ -167,17 +231,14 @@ with tab3:
                             if feature_name in input_vector:
                                 input_vector[feature_name] = 1
                     
-                    # 2. 进行预测
                     input_df = pd.DataFrame([input_vector])[model_features]
                     prediction = model.predict(input_df)[0]
                     proba = np.max(model.predict_proba(input_df)) * 100
                 
-                # 3. 结果还原机制：消除预测结果中的 "..."，精准匹配原始数据表
                 clean_pred = prediction.replace("...", "")
                 matched_data = df_profiles[df_profiles['cluster_name'].str.startswith(clean_pred, na=False)]
                 full_name = matched_data.iloc[0]['cluster_name'] if not matched_data.empty else prediction
                 
-                # 4. 展示炫酷结果
                 st.divider()
                 r1, r2 = st.columns([1, 3])
                 with r1:
@@ -185,7 +246,6 @@ with tab3:
                 with r2:
                     st.success(f"### 🔴 案件定性匹配：\n**{full_name}**")
                 
-                # 5. 联动展示业务建议
                 if not matched_data.empty:
                     rule = matched_data.iloc[0].get('decision_rule', '无提取规则')
                     st.info(f"**📖 机器判别规则依据**：\n{rule}")
