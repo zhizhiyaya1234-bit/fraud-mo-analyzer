@@ -6,7 +6,7 @@ import os
 import plotly.graph_objects as go
 
 # ================= 1. 页面全局配置 =================
-st.set_page_config(page_title="天网·诈骗行为链路自动化研判系统", layout="wide", page_icon="🛡️")
+st.set_page_config(page_title="诈骗行为链路自动化研判系统", layout="wide", page_icon="🛡️")
 
 # 自定义一些简单的 CSS 让页面更好看
 st.markdown("""
@@ -17,7 +17,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="main-header">🛡️ 天网：诈骗行为链路 (MO) 自动化研判与预警系统</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-header">🛡️ 诈骗行为链路 (MO) 自动化研判与预警系统</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-header">基于大语言模型提取与 HDBSCAN 密度聚类的底层犯罪模式发现引擎</p>', unsafe_allow_html=True)
 st.divider()
 
