@@ -63,7 +63,7 @@ st.write("") # 留白
 # ================= 4. 构建四大核心功能模块 =================
 tab1, tab2, tab3, tab4 = st.tabs(["📊 宏观态势地图", "🔍 诈骗模式图谱", "🧠 犯罪心理交叉透视", "🚨 智能预警沙盒 (实战)"])
 
-# ----------------- Tab 1: 宏观态势地图 (重新排版升级版) -----------------
+# ----------------- Tab 1: 宏观态势地图 -----------------
 with tab1:
     st.markdown("### 🗺️ 诈骗宇宙空间分布拓扑图")
     st.info("💡 算法通过计算不同案件在【准备-接触-信任-操纵-榨取】全链路的相似度，自动将手法一致的案件聚集在相邻的拓扑空间中。")
@@ -73,18 +73,23 @@ with tab1:
     except:
         st.caption("暂无 UMAP 图片展示")
         
-    st.markdown("#### 🌊 犯罪行为全链路流转图 (MO Flow)")
+    st.markdown("#### 🌊 主流犯罪行为全链路流转图 (Top MO Flows)")
     if not df_clean.empty:
-        # 选择核心的4个阶段画流转图
         flow_cols = ['contact_primary', 'trust_primary', 'manipulation_primary', 'extraction_primary']
         df_flow = df_clean[flow_cols].copy()
+        
         # 清洗前缀，让桑基图更清爽
         for col in flow_cols:
             df_flow[col] = df_flow[col].apply(lambda x: str(x).split('_')[-1] if '_' in str(x) else str(x))
             
+        # 🌟 核心修复：只保留发生频率最高的 Top 20 条主干链路，去掉长尾乱码
+        path_counts = df_flow.value_counts().reset_index(name='案件数')
+        top_paths = path_counts.head(20)
+            
         fig_flow = px.parallel_categories(
-            df_flow, 
+            top_paths, 
             dimensions=flow_cols,
+            color='案件数',
             labels={'contact_primary': '接触', 'trust_primary': '信任', 'manipulation_primary': '操纵', 'extraction_primary': '榨取'},
             color_continuous_scale=px.colors.sequential.Agsunset
         )
@@ -93,21 +98,24 @@ with tab1:
         
     st.divider()
     
-    # --- 第二排：占比 vs 特征重要性 ---
     row2_col1, row2_col2 = st.columns(2)
     with row2_col1:
         st.markdown("#### 🍩 诈骗大类规模占比基线")
         if not df_clean.empty:
             type_counts = df_clean['cluster_name'].value_counts().reset_index()
             type_counts.columns = ['诈骗类型', '案件宗数']
-            type_counts['简称'] = type_counts['诈骗类型'].apply(lambda x: str(x)[:12] + '...' if len(str(x))>12 else str(x))
             
+            # 🌟 核心修复：恢复全名。把名字挪到图例里，饼图内只留百分比
             fig_pie = px.pie(
-                type_counts, values='案件宗数', names='简称', hole=0.4,
-                hover_data=['诈骗类型'], color_discrete_sequence=px.colors.qualitative.Prism
+                type_counts, values='案件宗数', names='诈骗类型', hole=0.4,
+                hover_data=['案件宗数'], color_discrete_sequence=px.colors.qualitative.Prism
             )
-            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-            fig_pie.update_layout(height=450, margin=dict(t=10, b=10, l=10, r=10), showlegend=False)
+            fig_pie.update_traces(textposition='inside', textinfo='percent')
+            # 开启图例并放在下方，防止左侧空间被挤压
+            fig_pie.update_layout(
+                height=550, margin=dict(t=10, b=10, l=10, r=10), 
+                showlegend=True, legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5)
+            )
             st.plotly_chart(fig_pie, use_container_width=True)
             
     with row2_col2:
@@ -119,7 +127,6 @@ with tab1:
             
     st.divider()
     
-    # --- 第三排：决策树 vs 标签热力矩阵 ---
     row3_col1, row3_col2 = st.columns(2)
     with row3_col1:
         st.markdown("#### 🎯 智能化诈骗类型判别路径")
@@ -132,7 +139,6 @@ with tab1:
         st.markdown("#### 🧮 犯罪团伙作案标签热力矩阵")
         st.info("颜色越深，代表该类别犯罪团伙在行骗过程中触发对应标签动作的频率越高。")
         try:
-            # 兼容 jpg 格式
             if os.path.exists("02_Named_Feature_Heatmap.jpg"):
                 st.image("02_Named_Feature_Heatmap.jpg", use_container_width=True)
             else:
@@ -183,13 +189,13 @@ with tab3:
     st.info("💡 洞察解析：通过交叉矩阵，揭示不同诈骗套路底层“收割”的是受害者的哪种心理弱点与行为驱动力。")
 
     if not df_clean.empty and 'psychological_vulnerability' in df_clean.columns and 'compliance_driver' in df_clean.columns:
-        df_clean['short_name'] = df_clean['cluster_name'].apply(lambda x: str(x)[:12] + '...' if len(str(x))>12 else str(x))
         
         col_p, col_d = st.columns(2)
         
         with col_p:
             st.markdown("#### 💔 诈骗类型 VS 心理弱点")
-            cross_psych = pd.crosstab(df_clean['short_name'], df_clean['psychological_vulnerability'])
+            # 🌟 核心修复：直接使用全名 cluster_name，不截断
+            cross_psych = pd.crosstab(df_clean['cluster_name'], df_clean['psychological_vulnerability'])
             fig_psych = px.imshow(
                 cross_psych,
                 labels=dict(x="受害者心理弱点", y="诈骗判定类型", color="案件数量"),
@@ -199,12 +205,14 @@ with tab3:
                 text_auto=True,
                 aspect="auto"
             )
-            fig_psych.update_layout(xaxis_tickangle=-30, height=600)
+            # 增加 height 高度，给全名留足空间
+            fig_psych.update_layout(xaxis_tickangle=-30, height=750)
             st.plotly_chart(fig_psych, use_container_width=True)
 
         with col_d:
             st.markdown("#### 🪝 诈骗类型 VS 顺从驱动力")
-            cross_driver = pd.crosstab(df_clean['short_name'], df_clean['compliance_driver'])
+            # 🌟 核心修复：直接使用全名 cluster_name，不截断
+            cross_driver = pd.crosstab(df_clean['cluster_name'], df_clean['compliance_driver'])
             fig_driver = px.imshow(
                 cross_driver,
                 labels=dict(x="受害者顺从驱动力", y="诈骗判定类型", color="案件数量"),
@@ -214,7 +222,7 @@ with tab3:
                 text_auto=True,
                 aspect="auto"
             )
-            fig_driver.update_layout(xaxis_tickangle=-30, height=600)
+            fig_driver.update_layout(xaxis_tickangle=-30, height=750)
             st.plotly_chart(fig_driver, use_container_width=True)
             
         st.markdown("#### 🕵️ 警务实战建议 (反诈精准宣发)")
