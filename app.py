@@ -172,40 +172,43 @@ with tab2:
     else:
         st.error("缺失档案文件")
 
-# ----------------- Tab 3: 🧠 犯罪心理交叉透视 (🌟 纵向排列优化版) -----------------
+# ----------------- Tab 3: 🧠 犯罪心理交叉透视 (🌟 纵向排列百分比优化版) -----------------
 with tab3:
     st.markdown("### 🧠 犯罪心理画像：案件类型与受害者心理交叉分析")
-    st.info("💡 纵向透视：通过分析不同诈骗套路与受害者心理特征的频次交叉，辅助精准预警宣发。")
+    st.info("💡 纵向透视：通过分析不同诈骗套路与受害者心理特征的频次交叉，辅助精准预警宣发。数值为该诈骗类型内部的特征占比 (%)。")
 
     if not df_clean.empty and 'psychological_vulnerability' in df_clean.columns and 'compliance_driver' in df_clean.columns:
         
-        # 1. 第一个图：心理弱点 (全宽展示)
-        st.markdown("#### 💔 诈骗类型 VS 心理弱点矩阵")
-        cross_psych = pd.crosstab(df_clean['cluster_name'], df_clean['psychological_vulnerability'])
+        # 1. 第一个图：心理弱点 (全宽展示，改为按行计算百分比)
+        st.markdown("#### 💔 诈骗类型 VS 心理弱点矩阵 (%)")
+        cross_psych = (pd.crosstab(df_clean['cluster_name'], df_clean['psychological_vulnerability'], normalize='index') * 100).round(1)
+        
         fig_psych = px.imshow(
             cross_psych,
-            labels=dict(x="受害者心理弱点", y="诈骗判定类型", color="案件数量"),
+            labels=dict(x="受害者心理弱点", y="诈骗判定类型", color="占比 (%)"),
             x=cross_psych.columns,
             y=cross_psych.index,
             color_continuous_scale="Blues", 
-            text_auto=True, aspect="auto"
+            text_auto='.1f', # 强制显示1位小数
+            aspect="auto"
         )
-        # 🌟 优化：加大高度，字体，留白
         fig_psych.update_layout(height=800, font=dict(size=13), margin=dict(l=250))
         st.plotly_chart(fig_psych, use_container_width=True)
 
         st.write("") # 留点空白
 
-        # 2. 第二个图：驱动力 (全宽展示)
-        st.markdown("#### 🪝 诈骗类型 VS 顺从驱动力矩阵")
-        cross_driver = pd.crosstab(df_clean['cluster_name'], df_clean['compliance_driver'])
+        # 2. 第二个图：驱动力 (全宽展示，改为按行计算百分比)
+        st.markdown("#### 🪝 诈骗类型 VS 顺从驱动力矩阵 (%)")
+        cross_driver = (pd.crosstab(df_clean['cluster_name'], df_clean['compliance_driver'], normalize='index') * 100).round(1)
+        
         fig_driver = px.imshow(
             cross_driver,
-            labels=dict(x="受害者顺从驱动力", y="诈骗判定类型", color="案件数量"),
+            labels=dict(x="受害者顺从驱动力", y="诈骗判定类型", color="占比 (%)"),
             x=cross_driver.columns,
             y=cross_driver.index,
             color_continuous_scale="Oranges", 
-            text_auto=True, aspect="auto"
+            text_auto='.1f', # 强制显示1位小数
+            aspect="auto"
         )
         fig_driver.update_layout(height=800, font=dict(size=13), margin=dict(l=250))
         st.plotly_chart(fig_driver, use_container_width=True)
